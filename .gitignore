@@ -124,8 +124,7 @@ Thumbs.db
 *.log
 logs/
 *.log.*
-local/*
-config.ini
+/config.ini
 config.min.ini
 *.db
 *.db-wal
@@ -175,10 +174,7 @@ yarn-error.log*
 dist/deb-build/
 
 # Local user plugins and config (keep README and .gitkeep only)
-local/config.ini
-local/commands/*
 !local/commands/.gitkeep
-local/service_plugins/*
 !local/service_plugins/.gitkeep
 
 .claude/
