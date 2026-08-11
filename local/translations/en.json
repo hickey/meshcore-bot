@@ -5,7 +5,8 @@
         },
         "whois": {
             "help": "Lookup callsign and display owner information",
-            "noparam": "whois command requires a callsign"
+            "noparam": "whois command requires a callsign",
+            "format": "{callsign} is {adr_name} from {qth}, {country}, {continent}"
         }
     }
 }

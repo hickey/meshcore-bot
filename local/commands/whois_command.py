@@ -4,6 +4,7 @@ Whois command for the MeshCore Bot
 Looks up callsign and displays basic user info
 """
 
+import re
 import time
 import requests
 import xml.dom.minidom
@@ -44,6 +45,9 @@ class WhoisCommand(BaseCommand):
         self.enabled = self.get_config_value("Whois_Command", "enabled", fallback=True, value_type="bool")
         self.username = self.get_config_value("Whois_Command", "hamqth_username", fallback="", value_type="str")
         self.password = self.get_config_value("Whois_Command", "hamqth_password", fallback="", value_type="str")
+        self.format = self.get_config_value("Whois_Command", "format",
+                                        fallback="{callsign} is {adr_name} from {qth}, {country}, {continent}",
+                                        value_type="str")
         self._session_start = 0
         self._session_id = None
         self._auth_count = 0
@@ -96,7 +100,27 @@ class WhoisCommand(BaseCommand):
 
         return False
 
-    async def hamqth_authenticate(self) -> str:
+    def build_response(self, record: dict[str]) -> str:
+        """Format a lookup response from self.format
+
+        Args:
+            record: dictonary of keywords and values
+
+        Returns:
+            str: formatted string
+        """
+        def keyword_expansion(match, data: dict[str]) -> str:
+            # Extract the matched text string
+            kw = match.group(1)
+            # Return the new string to replace the match
+            return data[kw] or ""
+
+        response = re.sub(r'\{\s*(\S+)\s*\}',
+                          lambda m, d=record: keyword_expansion(m, d),
+                          self.format)
+        return response
+
+    def hamqth_authenticate(self) -> str:
         """Authenticate to HamQTH if needed
 
         Returns:
@@ -118,7 +142,7 @@ class WhoisCommand(BaseCommand):
             "u": self.username,
             "p": self.password
         }
-        auth_resp = await requests.get("https://www.hamqth.com/xml.php", auth_params)
+        auth_resp = requests.get("https://www.hamqth.com/xml.php", auth_params)
         # keep track of auths so we do not get into a loop on errors
         self._auth_count += 1
 
@@ -129,9 +153,9 @@ class WhoisCommand(BaseCommand):
         dom = xml.dom.minidom.parseString(auth_resp.content)
 
         # check for error
-        error = dom.getElementByTagName("error")
+        error = dom.getElementsByTagName("error")
         if error:
-            error_text = error.firstChild.data
+            error_text = error[0].firstChild.data
             if error_text =="Session does not exist or expired":
                 # Need to force reauthentication
                 self._session_start = 0
@@ -141,11 +165,11 @@ class WhoisCommand(BaseCommand):
             raise WhoisError(f"HamQTH authentication error: {error_text}")
 
         self._session_start = now
-        session = dom.getElementByTagName("session_id")
-        self.logger.debug(f"HamQTH session id: {session.firstChild.data}")
-        return session.firstChild.data
+        session = dom.getElementsByTagName("session_id")
+        self.logger.debug(f"HamQTH session id: {session[0].firstChild.data}")
+        return session[0].firstChild.data
 
-    async def hamqth_query(self, callsign: str) -> dict:
+    def hamqth_query(self, callsign: str) -> dict:
         """Query HamQTH for callsign record
 
         Args:
@@ -159,7 +183,7 @@ class WhoisCommand(BaseCommand):
             "callsign": callsign,
             "prg": "meshcore-bot/whois"
         }
-        query_resp = await requests.get("https://www.hamqth.com/xml.php", query_params)
+        query_resp = requests.get("https://www.hamqth.com/xml.php", query_params)
 
         if query_resp.status_code != 200:
             raise WhoisError("HamQTH server error: status code = {auth_resp.status_code}")
@@ -168,9 +192,9 @@ class WhoisCommand(BaseCommand):
         dom = xml.dom.minidom.parseString(query_resp.content)
 
         # check for error
-        error = dom.getElementByTagName("error")
+        error = dom.getElementsByTagName("error")
         if error:
-            error_text = error.firstChild.data
+            error_text = error[0].firstChild.data
             if error_text =="Callsign not found":
                 return { "error": "Callsign not found" }
 
@@ -180,14 +204,18 @@ class WhoisCommand(BaseCommand):
         def xml_to_dict(element: xml.dom.minidom.Node) -> dict:
             data = {}
             if element.hasChildNodes():
-                for child in element.childNodes():
-                    if child.hasChildNodes():
-                        data[child.nodeName] = xml_to_dict(child)
-                    else:
-                        data[child.nodeName] = child.data
+                for child in element.childNodes:
+                    if  child.nodeType == child.ELEMENT_NODE:
+                        if child.firstChild and child.firstChild.data:
+                            data[child.nodeName] = child.firstChild.data
+                        else:
+                            data[child.nodeName] = ""
             return data
 
-        return xml_to_dict(dom.getElementByTagName("search").firstChild)
+        record_data = dom.getElementsByTagName("search")[0]
+        record = xml_to_dict(record_data)
+
+        return record
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the whois command.
@@ -216,6 +244,5 @@ class WhoisCommand(BaseCommand):
         record = self.hamqth_query(callsign)
         self.logger.debug(f"HamQTH {record=}")
 
-        response = f"{callsign} is {record['adr_name']} from {record['qth']}, {record['country']}, {record['continent']}"
-
+        response = self.build_response(record)
         return await self.send_response(message, response)
