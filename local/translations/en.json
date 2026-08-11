@@ -2,6 +2,10 @@
     "commands": {
         "contact": {
             "help": "Display the bot's contact information"
+        },
+        "whois": {
+            "help": "Lookup callsign and display owner information",
+            "noparam": "whois command requires a callsign"
         }
     }
 }
