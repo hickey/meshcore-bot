@@ -1,0 +1,7 @@
+{
+    "commands": {
+        "contact": {
+            "help": "Display the bot's contact information"
+        }
+    }
+}
