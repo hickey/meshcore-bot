@@ -211,6 +211,8 @@ class RoomServerBridgeService(BaseServicePlugin):
             self.room_server_name,
             "ENABLED" if self.bridge_enabled else "DISABLED",
         )
+        dm_content = self._build_dm("dab-bot", "Bridging enabled")
+        self._enqueue_dm(self.room_server_name, dm_content)
 
     async def on_transport_reconnected(self) -> None:
         if not self._running or not getattr(self.bot, "meshcore", None):
