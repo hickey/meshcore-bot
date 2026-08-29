@@ -62,6 +62,7 @@ nav:
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
     - Region warnings: region-warnings.md
+    - Scheduled messages: scheduled-messages.md
   - Web Viewer: web-viewer.md
   - Command Reference:
     - Overview: command-reference.md
