@@ -34,6 +34,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 | [Web Viewer](web-viewer.md) | Web-based data viewer and API |
 | [Custom command website](command-reference-website.md) | Generate an HTML command reference for your users |
 | [Develop commands](develop-command-scripts.md) | Guide for developing bot commands |
+| [Scheduled messages](schedule-messages.md) | How message schedules work |
 
 ## Service Plugins
 
