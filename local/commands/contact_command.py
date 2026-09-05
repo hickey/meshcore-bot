@@ -26,16 +26,6 @@ class ContactCommand(BaseCommand):
         "contact"
     ]
 
-    settings_schema = [
-        {
-            "key": "enable_notifications",
-            "label": "Enable notifications",
-            "type": "bool",
-            "default": True,
-            "help": "Allow users to request bot contact information"
-        }
-    ]
-
     def __init__(self, bot):
         """Initialize the contact command.
 
