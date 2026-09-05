@@ -1456,6 +1456,7 @@ class BotDataViewer:
                     self.config,
                     logger=self.logger,
                     local_commands_dir=str(self.local_dir / "commands"),
+                    local_services_dir=str(self.local_dir / "service_plugins"),
                 )
                 return jsonify({'plugins': view})
             except Exception:
@@ -1477,6 +1478,7 @@ class BotDataViewer:
                     self.config,
                     logger=self.logger,
                     local_commands_dir=str(self.local_dir / "commands"),
+                    local_services_dir=str(self.local_dir / "service_plugins"),
                 )
                 entry = next(
                     (e for e in view if e['kind'] == kind and e['name'] == name),
