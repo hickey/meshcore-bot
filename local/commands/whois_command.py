@@ -35,6 +35,30 @@ class WhoisCommand(BaseCommand):
         {"name": "callsign", "description": "Callsign to lookup"}
     ]
 
+    settings_schema = [
+        {
+            "key": "enable_notifications",
+            "label": "Enable notifications",
+            "type": "bool",
+            "default": True,
+            "help": "Allow users to request bot contact information"
+        },
+        {
+            "key": "hamqth_username",
+            "label": "HamQTH Username",
+            "type": "str",
+            "default": "",
+            "help": "Username used to authenticate to HamQTH"
+        },
+        {
+            "key": "hamqth_password",
+            "label": "HamQTH Password",
+            "type": "str",
+            "default": "",
+            "help": "Password used to authenticate to HamQTH"
+        },
+    ]
+
     def __init__(self, bot):
         """Initialize the whois command.
 

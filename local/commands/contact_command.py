@@ -16,12 +16,24 @@ class ContactCommand(BaseCommand):
     keywords = ['contact']
     description = "Display the bot's contact information"
     category = "basic"
+    requires_internet = False
+    render_safe = True
 
     # Documentation
     short_description = "Display the bot's contact information"
     usage = "contact"
     examples = [
         "contact"
+    ]
+
+    settings_schema = [
+        {
+            "key": "enable_notifications",
+            "label": "Enable notifications",
+            "type": "bool",
+            "default": True,
+            "help": "Allow users to request bot contact information"
+        }
     ]
 
     def __init__(self, bot):
