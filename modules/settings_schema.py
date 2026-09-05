@@ -311,7 +311,7 @@ def build_plugin_settings_view(
     Returns a list of dicts, one per discovered command/service::
 
         {name, kind, section, label, description, category,
-         enabled, has_schema, fields, values}
+         enabled, source, has_schema, fields, values}
 
     ``fields`` is the plugin's ``settings_schema`` with a resolved ``value`` on
     each field.  ``values`` is the raw current config section (minus ``enabled``)
@@ -343,6 +343,7 @@ def build_plugin_settings_view(
                 # declare themselves opt-in (e.g. Announcements, Greeter read
                 # 'enabled' with fallback=False in __init__).
                 enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
+                source="base",
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
@@ -368,6 +369,7 @@ def build_plugin_settings_view(
                     description=getattr(cls, "description", "") or "",
                     category=getattr(cls, "category", "general") or "general",
                     enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
+                    source="local",
                 ))
             except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
                 if logger:
@@ -384,6 +386,7 @@ def build_plugin_settings_view(
                 description=getattr(cls, "description", "") or "",
                 category="service",
                 enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
+                source="base",
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
@@ -404,6 +407,7 @@ def _assemble_entry(
     description: str,
     category: str,
     enabled_default: bool,
+    source: str = "base",
 ) -> dict:
     schema = list(getattr(cls, "settings_schema", []) or [])
     fields: list[dict] = []
@@ -458,6 +462,7 @@ def _assemble_entry(
         "description": description,
         "category": category,
         "enabled": read_enabled(config, section, enabled_default),
+        "source": source,
         "has_schema": bool(fields),
         "fields": fields,
         "values": values,
