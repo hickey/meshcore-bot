@@ -46,7 +46,7 @@ class WhoisCommand(BaseCommand):
         {
             "key": "hamqth_password",
             "label": "HamQTH Password",
-            "type": "str",
+            "type": "password",
             "default": "",
             "help": "Password used to authenticate to HamQTH"
         },
