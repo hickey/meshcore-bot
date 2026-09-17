@@ -4932,7 +4932,7 @@ class BotDataViewer:
                     return False
 
                 # Reject unauthenticated SocketIO connections when auth is enabled (BUG-001)
-                if self.web_viewer_password and not session.get('authenticated'):
+                if self.web_viewer_password and not session.get('authenticated_admin'):
                     self.logger.warning(f"Rejected unauthenticated SocketIO connection from {client_id}")
                     with suppress(Exception):
                         disconnect()
