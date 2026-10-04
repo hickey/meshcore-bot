@@ -550,6 +550,31 @@ async def get_data_from_api(self, query: str) -> Optional[dict]:
         return None
 ```
 
+For long-running service plugins, create one `ClientSession` in the async
+`start()` method and reuse it for all requests. Cancel background tasks before
+closing the session in async `stop()`; do not create a new session for every
+request. When a service needs to trust additional local certificate authorities,
+start with the verified platform defaults and add the local certificates:
+
+```python
+import ssl
+
+context = ssl.create_default_context()
+context.load_verify_locations(cafile="/path/to/local-ca.pem", capath=None)
+connector = aiohttp.TCPConnector(ssl=context)
+session = aiohttp.ClientSession(
+    timeout=aiohttp.ClientTimeout(total=10),
+    connector=connector,
+)
+```
+
+An empty local CA setting should use the default context unchanged. Additional
+CA files or directories supplement system trust; they must not be used to
+replace verification, and `ssl=False` or disabled hostname verification should
+not be used. Resolve configurable relative paths against the application's
+configured root and fail clearly when a configured certificate path cannot be
+loaded.
+
 ### Blocking Operations with asyncio.to_thread
 
 For blocking I/O operations (geocoding, file operations), use `asyncio.to_thread`:
