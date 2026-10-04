@@ -104,6 +104,9 @@ class VCSOAlertService(BaseAlertService):
         {"key": "min_priority", "label": "Minimum priority for posting", "type": "int",
          "min": 1, "max": 5, "default": 3,
          "help": "Only post incidents with priority at or below this value (1=highest)."},
+        {"key": "flood_scope", "label": "Region code (flood scope)", "type": "str",
+         "default": "",
+         "help": "Optional regional TC_FLOOD scope for outgoing messages (e.g. #west). Note: region code must be pre-defined in flood_scopes."},
     ]
 
     def __init__(self, bot: Any) -> None:
