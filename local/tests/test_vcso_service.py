@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Test script for VCSO Alert Service."""
 
-import sys
-import os
-
-# Add parent directory to path to import the service
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from local.service_plugins.vcso_alert_service import VCSOTableParser, VCSOAlertService
 import asyncio
-from unittest.mock import Mock
 import configparser
+import os
+import ssl
+import sys
+from unittest.mock import Mock
+
+# Add repository root to path to import the local service package.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from local.service_plugins.vcso_alert_service import VCSOAlertService, VCSOTableParser
 
 
 def test_parser():
@@ -115,33 +116,106 @@ async def test_service():
     print("✓ Query parsing passed")
 
 
-async def test_live_scrape():
-    """Test live scraping from VCSO website."""
-    print("\nAttempting live scrape from VCSO website...")
-
+async def test_scrape_with_aiohttp(monkeypatch):
+    """Test async scraping without contacting the live VCSO site."""
     mock_bot = Mock()
     config = configparser.ConfigParser()
     config.add_section('VCSO_Alert_Service')
     config.set('VCSO_Alert_Service', 'enabled', 'true')
-    config.set('VCSO_Alert_Service', 'label', 'VCSO')
-    config.set('VCSO_Alert_Service', 'min_priority', '3')
-
     mock_bot.config = config
-
+    mock_bot.logger = Mock()
+    mock_bot.bot_root = '/tmp'
     service = VCSOAlertService(mock_bot)
 
-    try:
-        incidents = service._scrape_incidents()
-        print(f"✓ Successfully scraped {len(incidents)} incidents")
+    html = '<table id="ActiveCallsTbl"><tr class="row"><td><span id="CallNoLabel">123456</span></td></tr></table>'
 
-        if incidents:
-            print("\nFirst incident:")
-            inc = incidents[0]
-            for key, value in inc.items():
-                print(f"  {key}: {value}")
-    except Exception as e:
-        print(f"✗ Live scrape failed: {e}")
-        print("  (This is expected if the website is unreachable or has changed)")
+    class FakeResponse:
+        def __init__(self):
+            self.status_checked = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            self.status_checked = True
+
+        async def text(self):
+            return html
+
+    class FakeSession:
+        closed = False
+
+        def get(self, url):
+            assert url == service.url
+            return FakeResponse()
+
+    service._http_session = FakeSession()
+    incidents = await service._scrape_incidents()
+
+    assert incidents == [{'call_number': '123456'}]
+
+
+async def test_ssl_context_loads_additional_ca_file(tmp_path):
+    """Configured local CA files are loaded into the verified default context."""
+    mock_bot = Mock()
+    config = configparser.ConfigParser()
+    config.add_section('VCSO_Alert_Service')
+    config.set('VCSO_Alert_Service', 'additional_ca_file', 'ca.pem')
+    mock_bot.config = config
+    mock_bot.logger = Mock()
+    mock_bot.bot_root = str(tmp_path)
+    ca_file = tmp_path / 'ca.pem'
+    ca_file.write_text('placeholder')
+    service = VCSOAlertService(mock_bot)
+
+    class FakeContext:
+        check_hostname = True
+        verify_mode = ssl.CERT_REQUIRED
+
+        def __init__(self):
+            self.loaded = None
+
+        def load_verify_locations(self, **kwargs):
+            self.loaded = kwargs
+
+    context = FakeContext()
+    original_create = ssl.create_default_context
+    try:
+        ssl.create_default_context = lambda: context
+        assert service._build_ssl_context() is context
+    finally:
+        ssl.create_default_context = original_create
+
+    assert context.loaded == {'cafile': str(ca_file), 'capath': None}
+    assert context.check_hostname
+    assert context.verify_mode == ssl.CERT_REQUIRED
+
+
+    """The service closes its aiohttp session when stopped."""
+    mock_bot = Mock()
+    config = configparser.ConfigParser()
+    config.add_section('VCSO_Alert_Service')
+    config.set('VCSO_Alert_Service', 'enabled', 'true')
+    mock_bot.config = config
+    mock_bot.logger = Mock()
+    mock_bot.bot_root = '/tmp'
+    service = VCSOAlertService(mock_bot)
+
+    class FakeSession:
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    session = FakeSession()
+    service._http_session = session
+    await service.stop()
+
+    assert session.closed
+    assert service._http_session is None
 
 
 if __name__ == '__main__':
@@ -153,8 +227,6 @@ if __name__ == '__main__':
 
     asyncio.run(test_service())
     print()
-
-    asyncio.run(test_live_scrape())
 
     print("\n" + "=" * 50)
     print("All tests completed!")

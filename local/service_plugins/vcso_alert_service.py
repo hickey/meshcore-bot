@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime
-from typing import Any, Optional
+import ssl
 from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any, Optional
 
-import requests
+import aiohttp
 
 from modules.service_plugins.base_alert_service import (
     QUERY_TYPE_CITY,
@@ -107,6 +108,12 @@ class VCSOAlertService(BaseAlertService):
         {"key": "flood_scope", "label": "Region code (flood scope)", "type": "str",
          "default": "",
          "help": "Optional regional TC_FLOOD scope for outgoing messages (e.g. #west). Note: region code must be pre-defined in flood_scopes."},
+        {"key": "additional_ca_file", "label": "Additional CA file", "type": "str",
+         "default": "",
+         "help": "Optional PEM CA bundle/file. Relative paths are resolved from the bot root and supplement system certificates."},
+        {"key": "additional_ca_path", "label": "Additional CA directory", "type": "str",
+         "default": "",
+         "help": "Optional OpenSSL hashed CA directory. Relative paths are resolved from the bot root and supplement system certificates."},
     ]
 
     def __init__(self, bot: Any) -> None:
@@ -114,6 +121,13 @@ class VCSOAlertService(BaseAlertService):
 
         self.url = "https://www.vcso.us/ActiveCalls/"
         self.url_timeout = 10
+        self.additional_ca_file = self.bot.config.get(
+            self.config_section, "additional_ca_file", fallback=""
+        ).strip()
+        self.additional_ca_path = self.bot.config.get(
+            self.config_section, "additional_ca_path", fallback=""
+        ).strip()
+        self._http_session: Optional[aiohttp.ClientSession] = None
 
         # In-memory storage of active incidents
         self._incidents: dict[str, dict] = {}
@@ -146,6 +160,60 @@ class VCSOAlertService(BaseAlertService):
                      "Zone: {zone}\n"
                      "Time: {entry_time}")
         ).strip()
+
+    def _resolve_ca_path(self, configured_path: str) -> str:
+        """Resolve a configured CA path relative to the bot root."""
+        path = Path(configured_path).expanduser()
+        if not path.is_absolute():
+            path = Path(getattr(self.bot, "bot_root", ".")) / path
+        return str(path.resolve())
+
+    def _build_ssl_context(self) -> ssl.SSLContext:
+        """Build a verified context while adding any configured local CAs."""
+        context = ssl.create_default_context()
+        cafile = self._resolve_ca_path(self.additional_ca_file) if self.additional_ca_file else None
+        capath = self._resolve_ca_path(self.additional_ca_path) if self.additional_ca_path else None
+
+        for path, option in ((cafile, "additional_ca_file"), (capath, "additional_ca_path")):
+            if path and not Path(path).exists():
+                raise ValueError(f"{option} does not exist: {path}")
+            if path and option == "additional_ca_file" and not Path(path).is_file():
+                raise ValueError(f"additional_ca_file is not a regular file: {path}")
+            if path and option == "additional_ca_path" and not Path(path).is_dir():
+                raise ValueError(f"additional_ca_path is not a directory: {path}")
+
+        if cafile or capath:
+            try:
+                context.load_verify_locations(cafile=cafile, capath=capath)
+            except (OSError, ssl.SSLError) as e:
+                raise ValueError(f"Unable to load configured VCSO CA certificates: {e}") from e
+        return context
+
+    async def start(self) -> None:
+        """Start polling and create the event-loop-bound HTTP session."""
+        await super().start()
+        if not self._running:
+            return
+        try:
+            connector = aiohttp.TCPConnector(ssl=self._build_ssl_context())
+            self._http_session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.url_timeout),
+                connector=connector,
+            )
+        except Exception:
+            self._running = False
+            self.logger.error("VCSO: Unable to initialize HTTPS client", exc_info=True)
+            await super().stop()
+            raise
+
+    async def stop(self) -> None:
+        """Stop polling and close the service-owned HTTP session."""
+        try:
+            await super().stop()
+        finally:
+            if self._http_session is not None and not self._http_session.closed:
+                await self._http_session.close()
+            self._http_session = None
 
     def get_capabilities(self) -> dict[str, bool]:
         """VCSO supports city-based queries."""
@@ -205,8 +273,7 @@ class VCSOAlertService(BaseAlertService):
             the priority threshold.
         """
         try:
-            # Fetch and parse in a thread to avoid blocking
-            incidents = await asyncio.to_thread(self._scrape_incidents)
+            incidents = await self._scrape_incidents()
 
             # Update in-memory storage
             current_call_numbers = set()
@@ -240,23 +307,23 @@ class VCSOAlertService(BaseAlertService):
             self.logger.error("VCSO: Error fetching incidents: %s", e, exc_info=True)
             return []
 
-    def _scrape_incidents(self) -> list[dict]:
-        """Scrape the VCSO active calls page (blocking I/O).
+    async def _scrape_incidents(self) -> list[dict]:
+        """Scrape the VCSO active calls page using the shared HTTP session."""
+        if self._http_session is None or self._http_session.closed:
+            raise RuntimeError("VCSO HTTP session is not initialized")
 
-        Returns:
-            List of incident dictionaries.
-        """
         try:
-            response = requests.get(self.url, timeout=self.url_timeout)
-            response.raise_for_status()
+            async with self._http_session.get(self.url) as response:
+                response.raise_for_status()
+                html = await response.text()
 
             parser = VCSOTableParser()
-            parser.feed(response.text)
+            parser.feed(html)
 
             self.logger.debug("VCSO: Scraped %d incidents", len(parser.incidents))
             return parser.incidents
 
-        except requests.exceptions.RequestException as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             self.logger.error("VCSO: HTTP error scraping page: %s", e)
             raise
         except Exception as e:
