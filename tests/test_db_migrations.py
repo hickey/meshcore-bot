@@ -486,6 +486,47 @@ class TestObservedPathsZeroHopSignal:
         assert applied == 1
 
 
+class TestBatteryLevelsMigration:
+    def test_battery_levels_table_and_indexes_created(self, runner, conn):
+        runner.run()
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(battery_levels)")}
+        assert columns == {
+            "id", "public_key", "timestamp", "battery_percentage", "battery_voltage",
+            "rx_msgs", "tx_msgs", "cloud_percent",
+        }
+        interval_columns = {
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(battery_levels_interval_data)"
+            )
+        }
+        assert interval_columns == {"id", "public_key", "timestamp", "rx_msgs", "tx_msgs"}
+        indexes = {
+            row[1] for row in conn.execute('PRAGMA index_list("battery_levels")')
+        }
+        assert indexes >= {
+            "idx_battery_levels_public_key_timestamp",
+            "idx_battery_levels_timestamp",
+        }
+
+        interval_indexes = {
+            row[1] for row in conn.execute(
+                'PRAGMA index_list("battery_levels_interval_data")'
+            )
+        }
+        assert interval_indexes >= {
+            "idx_battery_levels_interval_data_public_key_timestamp",
+            "idx_battery_levels_interval_data_timestamp",
+        }
+
+    def test_battery_levels_migration_is_idempotent(self, conn, logger):
+        runner = MigrationRunner(conn, logger)
+        runner.run()
+        runner.run()
+        assert conn.execute(
+            "SELECT COUNT(*) FROM schema_version WHERE version = 25"
+        ).fetchone()[0] == 1
+
+
 class TestMigrationAtomicity:
     """A failing migration must roll back every migration in the same run."""
 

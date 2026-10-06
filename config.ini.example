@@ -2245,6 +2245,16 @@ min_reupload_interval = 3600
 # true: Show detailed debug information (useful for troubleshooting)
 # false: Standard logging (default)
 verbose = false
+[Battery_Monitor_Service]
+# Enable periodic battery checks for configured remote repeaters/room servers.
+enabled = false
+# Comma-separated 64-character hexadecimal public keys.
+nodes =
+# How often each configured node is queried, in seconds.
+check_interval = 3600
+# Remote status reports voltage in millivolts. Battery percentage is stored only
+# when the node explicitly reports telemetry percentage; otherwise it is NULL.
+
 [Weather_Service]
 # Enable weather service for scheduled forecasts and alert monitoring (true/false)
 enabled = false
