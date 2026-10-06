@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Battery - MeshCore Bot Data Viewer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h1><i class="fas fa-battery-three-quarters"></i> Battery monitoring</h1>
+        <p class="text-muted mb-0">Remote-node voltage history and current reporting status.</p>
+    </div>
+    <label class="d-flex align-items-center gap-2" for="battery-interval">
+        <span class="text-muted">History</span>
+        <select id="battery-interval" class="form-select form-select-sm" aria-label="Battery history interval">
+            <option value="1d">Last 1 day</option>
+            <option value="3d">Last 3 days</option>
+            <option value="7d" selected>Last 7 days</option>
+            <option value="2w">Last 2 weeks</option>
+            <option value="1mo">Last 1 month</option>
+            <option value="3mo">Last 3 months</option>
+        </select>
+    </label>
+</div>
+
+<div id="battery-loading" class="text-center py-5" role="status">
+    <div class="spinner-border text-primary" aria-hidden="true"></div>
+    <p class="mt-2 text-muted">Loading battery readings…</p>
+</div>
+<div id="battery-error" class="alert alert-danger d-none" role="alert"></div>
+<div id="battery-empty" class="alert alert-info d-none" role="status">
+    No battery-monitor nodes are configured.
+</div>
+<div id="battery-cards" class="row g-3" aria-live="polite"></div>
+
+<template id="battery-card-template">
+    <div class="col-12 col-lg-6 battery-node-column">
+        <article class="card h-100 battery-node-card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                <h2 class="h5 mb-0 battery-node-name"></h2>
+                <span class="badge battery-status"></span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                    <span class="h3 mb-0 battery-current">—</span>
+                    <span class="text-muted battery-current-time"></span>
+                </div>
+                <p class="small mb-2 battery-status-message"></p>
+                <div class="battery-chart-wrap" style="height: 230px;">
+                    <canvas class="battery-chart" aria-label="Voltage history"></canvas>
+                </div>
+                <details class="mt-2">
+                    <summary class="small">Accessible readings</summary>
+                    <ul class="small text-muted battery-readings mb-0"></ul>
+                </details>
+            </div>
+        </article>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .battery-node-card .battery-status { white-space: nowrap; }
+    .battery-node-card .battery-status-message { min-height: 1.25rem; }
+    .battery-chart-wrap canvas { max-width: 100%; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/battery.js') }}"></script>
+{% endblock %}
