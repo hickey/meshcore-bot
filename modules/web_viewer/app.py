@@ -167,6 +167,7 @@ from modules.feed_parse import (  # noqa: F401
 from modules.repeater_manager import RepeaterManager, validate_repeater_tables
 from modules.security_utils import SafeUrlPolicy, create_safe_requests_session, safe_requests_request  # noqa: F401
 from modules.utils import resolve_path
+from modules.web_viewer.battery import BatteryMixin
 from modules.web_viewer.channels import ChannelAdminMixin
 from modules.web_viewer.cleanup import CleanupSchedulerMixin
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
@@ -192,7 +193,7 @@ from modules.web_viewer.socket_clients import SocketClientsMixin
 from modules.web_viewer.tracking import ContactTrackingMixin
 
 
-class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin, CleanupSchedulerMixin, ChannelAdminMixin, DatabaseAdminMixin, ContactTrackingMixin, MeshEvidenceMixin, MultibyteRolloutMixin, FeedSubscriptionsMixin):
+class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin, CleanupSchedulerMixin, ChannelAdminMixin, DatabaseAdminMixin, ContactTrackingMixin, MeshEvidenceMixin, MultibyteRolloutMixin, FeedSubscriptionsMixin, BatteryMixin):
     """Complete web interface using Flask-SocketIO 5.x best practices"""
 
     # Whitelist of allowed tables for security
@@ -222,6 +223,8 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         'greeter_rollout',
         'daily_rollup',
         'dashboard_snapshot',
+        'battery_levels',
+        'battery_levels_interval_data',
     }
 
     def __init__(self, db_path="meshcore_bot.db", repeater_db_path=None, config_path="config.ini"):
@@ -852,7 +855,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
 
         # Issue #240 public HTML surface (Realtime page renders; live socket stays admin).
         _PUBLIC_PAGE_PATHS = frozenset([
-            '/', '/realtime', '/contacts', '/mesh',
+            '/', '/realtime', '/contacts', '/mesh', '/battery',
         ])
 
         # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel
@@ -870,6 +873,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
             '/api/mesh/nodes',
             '/api/mesh/edges',
             '/api/mesh/stats',
+            '/api/battery',
         ])
 
         # Read-only POST helpers used by public Contacts / Mesh info panels.
@@ -972,6 +976,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                 'multibyte_rollout',
                 'mesh',
                 'api_explorer',
+                'battery',
             }
             if request.endpoint in nonce_hardened_endpoints:
                 script_source = f"script-src 'self' 'nonce-{g.csp_nonce}' "
@@ -1089,6 +1094,11 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         def contacts():
             """Contacts page - unified contact management and tracking"""
             return render_template('contacts.html')
+
+        @self.app.route('/battery')
+        def battery():
+            """Battery history for configured remote nodes."""
+            return render_template('battery.html')
 
         @self.app.route('/cache')
         def cache():
@@ -2510,6 +2520,12 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     for cid, info in self.connected_clients.items()
                 ]
             return jsonify(clients)
+
+        @self.app.route('/api/battery')
+        @self._api_errors('Error getting battery data')
+        def api_battery():
+            """Return configured-node battery history for a selected interval."""
+            return jsonify(self._get_battery_data(request.args.get('interval', '7d')))
 
         @self.app.route('/api/contacts')
         @self._api_errors('Error getting contacts')
