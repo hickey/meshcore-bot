@@ -276,6 +276,11 @@ SECTIONS: dict[str, SectionMeta] = {
         "telegram_chat_ids": KeyMeta(),
         "telegram_bot_token": KeyMeta(),
     }),
+    "Battery_Monitor_Service": SectionMeta(keys={
+        "enabled": KeyMeta(type="bool"),
+        "nodes": KeyMeta(),
+        "check_interval": KeyMeta(type="int", default="3600"),
+    }),
     "Greeter_Command": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
         "dead_air_delay_seconds": KeyMeta(type="int", default="0"),

@@ -63,6 +63,8 @@ class DBManager:
         'neighbor_observations',  # Zero-hop neighbor discovery - per-cycle history
         'region_scope_daily',  # Regional flood scope tallies per channel per day
         'region_warning_events',  # Region-code warning decisions
+        'battery_levels',  # Remote repeater/roomserver battery history
+        'battery_levels_interval_data',  # Cumulative remote traffic counters
     }
 
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):
@@ -440,17 +442,70 @@ class DBManager:
             self.logger.error(f"Error executing query: {e}")
             return []
 
-    def execute_update(self, query: str, params: tuple = ()) -> int:
-        """Execute an update/insert/delete query and return number of affected rows"""
+    def store_battery_observation(
+        self,
+        public_key: str,
+        timestamp: str,
+        battery_percentage: Optional[float],
+        battery_voltage: float,
+        rx_msgs: Optional[int],
+        tx_msgs: Optional[int],
+        cloud_percent: Optional[int] = None,
+    ) -> bool:
+        """Store one battery reading and its cumulative traffic snapshot atomically."""
         try:
             with self.connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(query, params)
+                previous = conn.execute(
+                    """
+                    SELECT rx_msgs, tx_msgs
+                    FROM battery_levels_interval_data
+                    WHERE public_key = ?
+                    ORDER BY timestamp DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (public_key,),
+                ).fetchone()
+
+                deltas = []
+                for current, prior in zip(
+                    (rx_msgs, tx_msgs), previous or (None, None)
+                ):
+                    deltas.append(
+                        current - prior
+                        if current is not None and prior is not None and current >= prior
+                        else None
+                    )
+
+                conn.execute(
+                    """
+                    INSERT INTO battery_levels
+                        (public_key, timestamp, battery_percentage, battery_voltage,
+                         rx_msgs, tx_msgs, cloud_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        public_key,
+                        timestamp,
+                        battery_percentage,
+                        battery_voltage,
+                        deltas[0],
+                        deltas[1],
+                        cloud_percent,
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO battery_levels_interval_data
+                        (public_key, timestamp, rx_msgs, tx_msgs)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (public_key, timestamp, rx_msgs, tx_msgs),
+                )
                 conn.commit()
-                return cursor.rowcount
+            return True
         except Exception as e:
-            self.logger.error(f"Error executing update: {e}")
-            return 0
+            self.logger.error(f"Error storing battery observation: {e}")
+            return False
 
     def delete_timestamp_rows_in_chunks(
         self,

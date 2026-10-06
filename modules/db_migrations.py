@@ -896,6 +896,40 @@ def _m0024_region_scope_tables(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _m0025_battery_levels(cursor: sqlite3.Cursor) -> None:
+    """Store periodic remote-node battery observations."""
+    _execute_statements(cursor, """
+        CREATE TABLE IF NOT EXISTS battery_levels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            battery_percentage REAL,
+            battery_voltage REAL NOT NULL,
+            rx_msgs INTEGER,
+            tx_msgs INTEGER,
+            cloud_percent INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_battery_levels_public_key_timestamp
+            ON battery_levels(public_key, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_battery_levels_timestamp
+            ON battery_levels(timestamp);
+
+        CREATE TABLE IF NOT EXISTS battery_levels_interval_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            rx_msgs INTEGER,
+            tx_msgs INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_battery_levels_interval_data_public_key_timestamp
+            ON battery_levels_interval_data(public_key, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_battery_levels_interval_data_timestamp
+            ON battery_levels_interval_data(timestamp);
+    """)
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -927,6 +961,7 @@ MIGRATIONS: list[MigrationEntry] = [
     (22, "neighbor discovery tables", _m0022_neighbor_tables),
     (23, "observed_paths: snr/rssi for zero-hop adverts", _m0023_observed_paths_zero_hop_signal),
     (24, "regional flood scope tallies and warning events", _m0024_region_scope_tables),
+    (25, "battery level observations", _m0025_battery_levels),
 ]
 
 
