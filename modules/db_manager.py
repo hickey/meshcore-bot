@@ -63,6 +63,7 @@ class DBManager:
         'neighbor_observations',  # Zero-hop neighbor discovery - per-cycle history
         'region_scope_daily',  # Regional flood scope tallies per channel per day
         'region_warning_events',  # Region-code warning decisions
+        'one_byte_deny_events',  # One-byte command denial attempts
     }
 
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):

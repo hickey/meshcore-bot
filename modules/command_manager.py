@@ -49,6 +49,7 @@ from .models import (
     channel_body_limit,
     self_info_name,
 )
+from .one_byte_deny import ACTION_DENY, ACTION_NORMAL, ACTION_SUPPRESS, OneByteDenyTracker
 
 # Default for [Bot] dm_min_ack_timeout: the shortest per-attempt wait for a DM's
 # ACK, in seconds. See CommandManager._dm_min_ack_timeout.
@@ -168,6 +169,7 @@ class CommandManager:
         )
         self.plugin_loader = PluginLoader(bot, local_commands_dir=local_commands_dir)
         self.commands = self.plugin_loader.load_all_plugins()
+        self.one_byte_deny = OneByteDenyTracker(bot)
 
         # Cache for internet connectivity status to avoid checking on every command
         # Thread-safe cache with asyncio.Lock
@@ -203,6 +205,12 @@ class CommandManager:
                     )
                 return raw
         return ""
+
+    def _one_byte_deny_decision(self, message: MeshMessage, command_name: str):
+        decision = self.one_byte_deny.decide(message, command_name)
+        if decision.action != ACTION_NORMAL:
+            setattr(message, "_one_byte_deny_claimed", True)
+        return decision
 
     def _load_flood_scope_keys(self) -> dict[str, bytes]:
         """Load flood_scopes config into a name→16-byte-key dict for HMAC matching.
@@ -412,6 +420,14 @@ class CommandManager:
             message: The queued message.
         """
         # Execute directly
+        decision = self._one_byte_deny_decision(message, command.name)
+        if decision.action == ACTION_SUPPRESS:
+            self.record_command_stat(message, command.name, False)
+            return
+        if decision.action == ACTION_DENY:
+            success = await self.send_response(message, decision.response or "")
+            self.record_command_stat(message, command.name, success)
+            return
         success = await command.execute(message)
 
         # Record in stats
@@ -919,12 +935,22 @@ class CommandManager:
                     # Channel check passed, process help request
                     if content_lower.startswith(help_keyword + ' '):
                         command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                        decision = self._one_byte_deny_decision(message, 'help')
+                        if decision.action == ACTION_SUPPRESS:
+                            return [('help', None)]
+                        if decision.action == ACTION_DENY:
+                            return [('help', decision.response)]
                         help_text = self.get_help_for_command(command_name, message)
                         # Format the help response with message data (same as other keywords)
                         help_text = self.format_keyword_response(help_text, message)
                         matches.append(('help', help_text))
                         return matches
                     elif content_lower == help_keyword:
+                        decision = self._one_byte_deny_decision(message, 'help')
+                        if decision.action == ACTION_SUPPRESS:
+                            return [('help', None)]
+                        if decision.action == ACTION_DENY:
+                            return [('help', decision.response)]
                         help_text = self.get_general_help(message)
                         # Format the help response with message data (same as other keywords)
                         help_text = self.format_keyword_response(help_text, message)
@@ -934,13 +960,7 @@ class CommandManager:
         # Check all loaded plugins for matches
         for command_name, command in self.commands.items():
             if command.should_execute(message):
-                # Check if we should queue instead of skip (for global cooldowns near expiring)
-                should_queue, remaining = self._should_queue_command(command, message)
-                if should_queue and self._queue_command(command, message, remaining):
-                    continue  # Silently queue, don't add to matches
-                    # Queue failed, fall through to normal check
-
-                # Check if command can execute (includes channel access check)
+                # Check if command can execute (cooldown, DM requirements, etc.)
                 if not command.can_execute(message):
                     continue  # Skip this command if it can't execute (wrong channel, cooldown, etc.)
 
@@ -955,6 +975,18 @@ class CommandManager:
                 # When channel_keywords is set, only allow listed triggers in channel
                 if not self._is_channel_trigger_allowed(command_name, message):
                     continue
+
+                decision = self._one_byte_deny_decision(message, command_name)
+                if decision.action == ACTION_SUPPRESS:
+                    return [(command_name, None)]
+                if decision.action == ACTION_DENY:
+                    return [(command_name, decision.response)]
+
+                # Check if we should queue instead of skip (for global cooldowns near expiring)
+                should_queue, remaining = self._should_queue_command(command, message)
+                if should_queue and self._queue_command(command, message, remaining):
+                    continue  # Silently queue, don't add to matches
+                    # Queue failed, fall through to normal check
 
                 # Get response format and generate response
                 response_format = command.get_response_format()
@@ -990,8 +1022,15 @@ class CommandManager:
             # Check for exact match first
             if keyword_lower == content_lower:
                 try:
-                    # Format the response with available message data
-                    response = self.format_keyword_response(response_format, message)
+                    decision = self._one_byte_deny_decision(message, keyword)
+                    if decision.action == ACTION_SUPPRESS:
+                        matches.append((keyword, None))
+                        continue
+                    if decision.action == ACTION_DENY:
+                        response = decision.response
+                    else:
+                        # Format the response with available message data
+                        response = self.format_keyword_response(response_format, message)
                     matches.append((keyword, response))
                 except Exception as e:
                     # Fallback to simple response if formatting fails
@@ -1003,8 +1042,15 @@ class CommandManager:
                 # Check if it's followed by a space or is the end of the message
                 if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == ' ':
                     try:
-                        # Format the response with available message data
-                        response = self.format_keyword_response(response_format, message)
+                        decision = self._one_byte_deny_decision(message, keyword)
+                        if decision.action == ACTION_SUPPRESS:
+                            matches.append((keyword, None))
+                            continue
+                        if decision.action == ACTION_DENY:
+                            response = decision.response
+                        else:
+                            # Format the response with available message data
+                            response = self.format_keyword_response(response_format, message)
                         matches.append((keyword, response))
                     except Exception as e:
                         # Fallback to simple response if formatting fails
@@ -2207,6 +2253,15 @@ class CommandManager:
                 continue
 
             if command.should_execute(message):
+                decision = self._one_byte_deny_decision(message, command_name)
+                if decision.action == ACTION_SUPPRESS:
+                    self.record_command_stat(message, command_name, False)
+                    return
+                if decision.action == ACTION_DENY:
+                    success = await self.send_response(message, decision.response or "")
+                    self.record_command_stat(message, command_name, success)
+                    return
+
                 # Only execute commands that don't have a response format (they handle their own responses)
                 response_format = command.get_response_format()
                 if response_format is not None:

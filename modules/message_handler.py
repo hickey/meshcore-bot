@@ -36,6 +36,7 @@ from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text  #
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager  # noqa: F401  re-exported
 from .packet_decode import split_path_hex
+from .one_byte_deny import ACTION_DENY, ACTION_NORMAL, ACTION_SUPPRESS
 from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN  # noqa: F401  re-exported
 from .rf_correlation import RfCorrelationMixin
 from .rf_log import RfLogMixin
@@ -1085,7 +1086,11 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
 
         # Check for advert command (DM only)
         if message.is_dm and message.content.strip().lower() == "advert":
-            await self.bot.command_manager.handle_advert_command(message)
+            decision = self.bot.command_manager._one_byte_deny_decision(message, "advert")
+            if decision.action == ACTION_DENY:
+                await self.bot.command_manager.send_response(message, decision.response or "")
+            elif decision.action == ACTION_NORMAL:
+                await self.bot.command_manager.handle_advert_command(message)
             return
 
         # Check for keywords and custom syntax
@@ -1105,11 +1110,12 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
                 # Track if this is a help response
                 if keyword == "help":
                     help_response_sent = True
-
-                # Track if this is a plugin command that has a response format
                 if keyword in self.bot.command_manager.commands and response is not None:
                     plugin_command_with_response_matched = True
 
+                # A denied or cooldown-suppressed match is final; never execute the original command.
+                if getattr(message, "_one_byte_deny_claimed", False):
+                    plugin_command_with_response_matched = True
                 # Skip commands that handle their own responses (response is None)
                 # These will be recorded when they execute via execute_commands
                 if response is None:
@@ -1161,6 +1167,11 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
             if randomline_match:
                 key, response = randomline_match
                 plugin_command_with_response_matched = True
+                decision = self.bot.command_manager._one_byte_deny_decision(message, f"randomline:{key}")
+                if decision.action == ACTION_SUPPRESS:
+                    return
+                if decision.action == ACTION_DENY:
+                    response = decision.response or ""
                 import time
 
                 command_id = f"randomline_{key}_{message.sender_id}_{int(time.time())}"
