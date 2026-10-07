@@ -138,6 +138,14 @@ respond_to_mentions = also
 # false: Bot will only listen and log messages
 enabled = true
 
+# Send a canned response instead of command output for commands received over an explicitly decoded 1-byte path.
+# The sender and mesh-wide cooldowns below are in minutes; the mesh-wide cooldown is shared across all channels.
+deny_1_byte = false
+deny_hash_template = Denied: 1-byte path {packet_hash}
+deny_1_byte_sender_cooldown_minutes = 60
+deny_1_byte_channel_cooldown_minutes = 5
+
+
 # Passive mode (only listen, don't respond)
 # true: Bot will not send any messages
 # false: Bot will respond normally
@@ -1188,6 +1196,8 @@ neighbor_observations_retention_days = 365
 # Regional flood scope tallies and region-warning events (see [Region_Warnings]).
 # Both are tiny — one tally row per channel per day — so a long window is cheap.
 region_warning_retention_days = 90
+# One-byte command denial attempts.
+one_byte_deny_retention_days = 90
 [Path_Command]
 # Enable or disable the path command
 enabled = true

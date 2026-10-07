@@ -181,6 +181,10 @@ SECTIONS: dict[str, SectionMeta] = {
         "radio_offline_alert_email": KeyMeta(),
         "radio_zombie_alert_enabled": KeyMeta(type="bool", default="false"),
         "radio_zombie_alert_email": KeyMeta(),
+        "deny_1_byte": KeyMeta(type="bool", default="false"),
+        "deny_hash_template": KeyMeta(default="Denied: 1-byte path {packet_hash}"),
+        "deny_1_byte_sender_cooldown_minutes": KeyMeta(type="float", default="60"),
+        "deny_1_byte_channel_cooldown_minutes": KeyMeta(type="float", default="5"),
     }),
     "Channels": SectionMeta(keys={
         "monitor_channels": KeyMeta(required=True),
@@ -299,6 +303,9 @@ SECTIONS: dict[str, SectionMeta] = {
         "max_warnings_per_day": KeyMeta(type="int", default="6"),
         "track_traffic": KeyMeta(type="bool", default="true"),
         "flood_scope": KeyMeta(),
+    }),
+    "Data_Retention": SectionMeta(keys={
+        "one_byte_deny_retention_days": KeyMeta(type="int", default="90"),
     }),
     "Announcements_Command": SectionMeta(dynamic_keys=True),
     "Alert_Command": SectionMeta(dynamic_keys=True),

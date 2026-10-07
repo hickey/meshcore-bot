@@ -224,6 +224,9 @@ class MaintenanceRunner:
         region_warning_days = get_retention_days(
             'Data_Retention', 'region_warning_retention_days', 90
         )
+        one_byte_deny_days = get_retention_days(
+            'Data_Retention', 'one_byte_deny_retention_days', 90
+        )
 
         try:
             if hasattr(self.bot, 'web_viewer_integration') and self.bot.web_viewer_integration:
@@ -271,6 +274,7 @@ class MaintenanceRunner:
             self._cleanup_neighbor_observations(neighbor_observations_days)
 
             self._cleanup_region_scope_history(region_warning_days)
+            self._cleanup_one_byte_deny_history(one_byte_deny_days)
 
             ran_at = _utc_now().isoformat()
             self._last_retention_stats['ran_at'] = ran_at
@@ -322,6 +326,21 @@ class MaintenanceRunner:
             )
         except Exception as e:
             self.logger.warning(f"Region warning event retention failed: {e}")
+
+    def _cleanup_one_byte_deny_history(self, retention_days: int) -> None:
+        if retention_days <= 0:
+            return
+        db_manager = getattr(self.bot, 'db_manager', None)
+        if not db_manager or not hasattr(db_manager, 'delete_timestamp_rows_in_chunks'):
+            return
+        cutoff = (_utc_now() - datetime.timedelta(days=retention_days)).isoformat()
+        try:
+            db_manager.delete_timestamp_rows_in_chunks(
+                'one_byte_deny_events', 'created_at', cutoff,
+                progress_label='one_byte_deny_events retention',
+            )
+        except Exception as e:
+            self.logger.warning(f'One-byte denial retention failed: {e}')
 
     def _cleanup_neighbor_observations(self, retention_days: int) -> None:
         """Prune zero-hop neighbor observation history past the retention window.

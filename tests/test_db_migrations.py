@@ -394,9 +394,33 @@ class TestSchema:
         assert _column_exists(cursor, "purging_log", "details") is True
 
 
-# ---------------------------------------------------------------------------
-# TestNeighborTables (migration 22)
-# ---------------------------------------------------------------------------
+class TestOneByteDenyEvents:
+    def test_table_and_indexes_created(self, runner, conn):
+        runner.run()
+        table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='one_byte_deny_events'"
+        ).fetchone()
+        assert table is not None
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(one_byte_deny_events)")}
+        assert {"created_at", "sender_key", "channel", "command_name", "packet_hash"} <= columns
+        indexes = {
+            row[1]
+            for row in conn.execute("PRAGMA index_list(one_byte_deny_events)")
+        }
+        assert {
+            "idx_one_byte_deny_events_created_at",
+            "idx_one_byte_deny_events_sender",
+            "idx_one_byte_deny_events_latest",
+        } <= indexes
+
+    def test_migration_is_idempotent(self, runner, conn):
+        runner.run()
+        runner.run()
+        assert conn.execute(
+            "SELECT COUNT(*) FROM schema_version WHERE version = 25"
+        ).fetchone()[0] == 1
+
+
 
 
 class TestNeighborTables:

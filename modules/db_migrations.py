@@ -930,6 +930,31 @@ def _m0025_battery_levels(cursor: sqlite3.Cursor) -> None:
     """)
 
 
+def _m0026_one_byte_deny_events(cursor: sqlite3.Cursor) -> None:
+    """Persist one-byte command denial attempts for restart-safe cooldowns."""
+    _execute_statements(cursor,
+        """
+        CREATE TABLE IF NOT EXISTS one_byte_deny_events (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at    TIMESTAMP NOT NULL,
+            sender_key    TEXT NOT NULL,
+            sender_id     TEXT,
+            sender_pubkey TEXT,
+            channel       TEXT,
+            command_name  TEXT NOT NULL,
+            packet_hash   TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_one_byte_deny_events_created_at
+            ON one_byte_deny_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_one_byte_deny_events_sender
+            ON one_byte_deny_events(sender_key, created_at);
+        CREATE INDEX IF NOT EXISTS idx_one_byte_deny_events_latest
+            ON one_byte_deny_events(created_at DESC, sender_key);
+        """
+    )
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -962,6 +987,7 @@ MIGRATIONS: list[MigrationEntry] = [
     (23, "observed_paths: snr/rssi for zero-hop adverts", _m0023_observed_paths_zero_hop_signal),
     (24, "regional flood scope tallies and warning events", _m0024_region_scope_tables),
     (25, "battery level observations", _m0025_battery_levels),
+    (26, "one-byte command denial events", _m0026_one_byte_deny_events),
 ]
 
 

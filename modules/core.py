@@ -672,6 +672,8 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
 
                     if getattr(self, 'region_warning_monitor', None):
                         self.region_warning_monitor.reload_config()
+                    if getattr(self.command_manager, 'one_byte_deny', None):
+                        self.command_manager.one_byte_deny.reload_config()
 
                     if hasattr(self, 'scheduler'):
                         scheduler_apply_started = True
@@ -685,6 +687,8 @@ class MeshCoreBot(ServiceSupervisorMixin, RadioLinkMixin, RadioOfflineBreaker, D
                     set_config(old_config)
                     if getattr(self, 'region_warning_monitor', None):
                         self.region_warning_monitor.reload_config()
+                    if getattr(self.command_manager, 'one_byte_deny', None):
+                        self.command_manager.one_byte_deny.reload_config()
                     # setup_scheduled_messages may have stopped the previous
                     # APScheduler before failing. Rebuild it against old config.
                     if scheduler_apply_started and hasattr(self, 'scheduler'):

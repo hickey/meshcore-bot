@@ -65,6 +65,7 @@ class DBManager:
         'region_warning_events',  # Region-code warning decisions
         'battery_levels',  # Remote repeater/roomserver battery history
         'battery_levels_interval_data',  # Cumulative remote traffic counters
+        'one_byte_deny_events',  # One-byte command denial attempts
     }
 
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):
