@@ -72,6 +72,7 @@ def test_loads_and_deduplicates_full_public_keys(config):
 def test_checks_remote_node_and_stores_nullable_percentage(config):
     key = "aa" * 32
     commands = SimpleNamespace(
+        reset_path=AsyncMock(),
         req_status_sync=AsyncMock(return_value={"bat": 3725, "nb_recv": 10, "nb_sent": 20}),
         req_telemetry_sync=AsyncMock(return_value=[]),
     )
@@ -83,6 +84,8 @@ def test_checks_remote_node_and_stores_nullable_percentage(config):
     run(service._check_nodes())
 
     commands.req_status_sync.assert_awaited_once_with(meshcore.contacts[key], timeout=30.0)
+    commands.reset_path.assert_awaited_once_with(meshcore.contacts[key])
+    commands.req_telemetry_sync.assert_not_awaited()
     bot.db_manager.store_battery_observation.assert_called_once()
     params = bot.db_manager.store_battery_observation.call_args.args
     assert params[0] == key
@@ -115,6 +118,7 @@ def test_one_node_failure_does_not_abort_following_nodes(config):
     second = "bb" * 32
     config.set("Battery_Monitor_Service", "nodes", f"{key},{second}")
     commands = SimpleNamespace(
+        reset_path=AsyncMock(),
         req_status_sync=AsyncMock(
             side_effect=[RuntimeError("timeout"), {"bat": 3800}]
         ),
@@ -136,6 +140,7 @@ def test_one_node_failure_does_not_abort_following_nodes(config):
 def test_stores_counter_deltas_through_database_manager(config):
     key = "aa" * 32
     commands = SimpleNamespace(
+        reset_path=AsyncMock(),
         req_status_sync=AsyncMock(
             side_effect=[
                 {"bat": 4000, "nb_recv": 100, "nb_sent": 200},
