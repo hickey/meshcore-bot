@@ -113,10 +113,11 @@ class BatteryMonitorService(BaseServicePlugin):
                     if contact is None:
                         self.logger.warning("Battery monitor node is not in contacts: %s", public_key)
                         continue
+                    await commands.reset_path(contact)
                     status = await request(contact, timeout=30.0)
                     voltage = self._voltage_from_status(status)
                     counters = self._message_counters_from_status(status)
-                    percentage = await self._percentage_from_telemetry(commands, contact)
+                    percentage = None
                 if voltage is None:
                     self.logger.warning("Battery monitor returned no voltage for node %s", public_key)
                     continue
