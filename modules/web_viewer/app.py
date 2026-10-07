@@ -228,6 +228,31 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
         'battery_levels_interval_data',
     }
 
+    def _add_battery_node_names(self, view):
+        entry = next(
+            (item for item in view if item['kind'] == 'service' and item['section'] == 'Battery_Monitor_Service'),
+            None,
+        )
+        if entry is None:
+            return
+        field = next((item for item in entry['fields'] if item['key'] == 'nodes'), None)
+        if field is None:
+            return
+        keys = field.get('value') or []
+        names = {}
+        if keys:
+            placeholders = ','.join('?' for _ in keys)
+            with self._db_connection() as conn:
+                rows = conn.execute(
+                    f'SELECT public_key, name FROM complete_contact_tracking WHERE LOWER(public_key) IN ({placeholders})',
+                    tuple(key.lower() for key in keys),
+                ).fetchall()
+            names = {row['public_key'].lower(): (row['name'] or row['public_key']) for row in rows}
+        field['node_items'] = [
+            {'key': key, 'name': names.get(key.lower(), 'Unknown node')}
+            for key in keys
+        ]
+
     def __init__(self, db_path="meshcore_bot.db", repeater_db_path=None, config_path="config.ini"):
         # Set bot root directory (project root) for path validation
         # This is the directory containing the modules folder
@@ -1187,6 +1212,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                     local_commands_dir=str(self.local_dir / "commands"),
                     local_services_dir=str(self.local_dir / "service_plugins"),
                 )
+                self._add_battery_node_names(view)
                 return jsonify({'plugins': view})
             except Exception:
                 self.logger.exception("Error building plugin settings view")
@@ -1246,9 +1272,7 @@ class BotDataViewer(DashboardSnapshotMixin, LiveStreamMixin, SocketClientsMixin,
                         else:
                             tsec = field.get('section') or section
                             if field.get('type') in ('int', 'float', 'enum') and coerced == '':
-                                # A cleared number, or an enum's "" (inherit) option,
-                                # means unset: `key =` would make getint/getfloat
-                                # raise, or read as an invalid choice.
+                                # A cleared number, or an enum's "" (inherit), means unset.
                                 deletes.setdefault(tsec, []).append(key)
                             else:
                                 updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)

@@ -653,6 +653,46 @@ function renderField(field, overrideValue, plugin) {
     if (field.section) label.appendChild(sectionBadge(field.section));
     wrapper.appendChild(label);
 
+    if (field.type === 'pubkey_list') {
+        const group = document.createElement('div');
+        group.className = 'pubkey-list';
+        const rows = document.createElement('div');
+        rows.className = 'pubkey-rows';
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.value = (field.value || []).join(', ');
+        const sync = () => {
+            hidden.value = [...rows.querySelectorAll('.pubkey-value')]
+                .map(input => input.value.trim()).filter(Boolean).join(', ');
+        };
+        const addRow = (key = '', name = 'Unknown node') => {
+            const row = document.createElement('div');
+            row.className = 'input-group input-group-sm mb-1';
+            const nameEl = document.createElement('span');
+            nameEl.className = 'input-group-text';
+            nameEl.textContent = name;
+            const keyInput = document.createElement('input');
+            keyInput.type = 'text'; keyInput.className = 'form-control font-monospace pubkey-value';
+            keyInput.value = key; keyInput.placeholder = '64-character public key';
+            keyInput.addEventListener('input', sync);
+            const remove = document.createElement('button');
+            remove.type = 'button'; remove.className = 'btn btn-outline-danger';
+            remove.title = 'Remove public key'; remove.innerHTML = '<i class="fas fa-trash"></i>';
+            remove.addEventListener('click', () => { row.remove(); sync(); });
+            row.append(nameEl, keyInput, remove);
+            rows.appendChild(row);
+        };
+        (field.node_items || []).forEach(item => addRow(item.key, item.name));
+        const add = document.createElement('button');
+        add.type = 'button'; add.className = 'btn btn-outline-secondary btn-sm mt-1';
+        add.innerHTML = '<i class="fas fa-plus me-1"></i>Add public key';
+        add.addEventListener('click', () => { addRow(); rows.lastElementChild.querySelector('input').focus(); sync(); });
+        group.append(rows, add, hidden);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        return { wrapper, input: hidden };
+    }
+
     if (field.type === 'enum') {
         input = document.createElement('select');
         input.className = 'form-select form-select-sm';

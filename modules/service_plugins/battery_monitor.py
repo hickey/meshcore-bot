@@ -23,10 +23,10 @@ class BatteryMonitorService(BaseServicePlugin):
         {
             "key": "nodes",
             "label": "Nodes",
-            "type": "list",
-            "default": "",
+            "type": "pubkey_list",
+            "default": [],
             "pattern": r"[0-9a-fA-F]{64}",
-            "help": "Comma-separated 64-character public keys for repeaters and room servers.",
+            "help": "Public keys for repeaters and room servers to poll.",
         },
         {
             "key": "check_interval",

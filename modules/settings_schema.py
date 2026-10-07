@@ -45,7 +45,7 @@ from typing import Any, Optional
 # so a plugin's on/off state displays correctly before the first canonical save.
 from modules.config_schema import LEGACY_ENABLED_ALIASES as _ENABLED_LEGACY_ALIASES
 
-VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password"}
+VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password", "pubkey_list"}
 
 # Truthy/falsey string forms accepted for bool fields (configparser-compatible).
 _TRUE = {"1", "true", "yes", "on"}
@@ -124,6 +124,22 @@ def validate_field(field: dict, raw: Any) -> tuple[bool, Any, Optional[str]]:
                     return False, None, f"{label} contains an invalid value: {item}"
         return True, items, None
 
+    if ftype == "pubkey_list":
+        items = raw if isinstance(raw, list) else [item.strip() for item in str(raw).split(",") if item.strip()]
+        pattern = field.get("pattern")
+        rx = re.compile(pattern) if pattern else None
+        normalized = []
+        seen = set()
+        for item in items:
+            value = str(item).strip().lower()
+            if not value or value in seen:
+                continue
+            if rx and not rx.fullmatch(value):
+                return False, None, f"{label} contains an invalid public key: {item}"
+            seen.add(value)
+            normalized.append(value)
+        return True, normalized, None
+
     # str / password (password is a str stored in plaintext in config.ini,
     # masked only in the web UI — same validation as str)
     s = str(raw)
@@ -149,7 +165,7 @@ def to_config_string(field: dict, coerced: Any) -> str:
     ftype = field.get("type", "str")
     if ftype == "bool":
         return "true" if coerced else "false"
-    if ftype == "list":
+    if ftype in ("list", "pubkey_list"):
         if isinstance(coerced, (list, tuple)):
             return ", ".join(str(x) for x in coerced)
         return str(coerced)
@@ -202,6 +218,9 @@ def _read_typed(config: configparser.ConfigParser, section: str, field: dict) ->
         if ftype == "float":
             return config.getfloat(section, key, raw=True)
         if ftype == "list":
+            raw = config.get(section, key, raw=True)
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        if ftype == "pubkey_list":
             raw = config.get(section, key, raw=True)
             return [item.strip() for item in raw.split(",") if item.strip()]
         return config.get(section, key, raw=True)
