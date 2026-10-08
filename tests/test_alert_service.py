@@ -83,9 +83,13 @@ class TestBaseAlertServicePolling:
         svc = _StubAlertService(_make_bot())
         assert svc.polling_enabled is False
 
+    def test_polling_interval_defaults_to_120_seconds(self):
+        svc = _StubAlertService(_make_bot())
+        assert svc.polling_interval_seconds == 120.0
+
     def test_polling_interval_floor(self):
         # Even a tiny configured interval is clamped to 30s.
-        svc = _StubAlertService(_make_bot(polling_interval="1000"))
+        svc = _StubAlertService(_make_bot(polling_interval="1"))
         assert svc.polling_interval_seconds == 30.0
 
     def test_polling_channels_parsed(self):

@@ -383,7 +383,7 @@ Every alert service inherits these keys (read from its own `config_section`):
 | `enabled` | bool | `false` | Load and enable the service. |
 | `label` | str | service id (upper) | Short label (≤6 chars) prefixed to messages as `[LABEL]:`. |
 | `polling_enabled` | bool | `false` | Enable background polling. |
-| `polling_interval` | int (ms) | `300000` | Poll frequency; clamped to a 30s minimum. |
+| `polling_interval` | int (seconds) | `120` | Poll frequency; clamped to a 30s minimum. |
 | `polling_channels` | list | (empty) | Channels to auto-post new incidents to. |
 | `flood_scope` | str | (inherit) | Optional regional TC_FLOOD scope for posts. |
 | `discord_webhook_urls` | list | (empty) | Optional external notification targets. |
@@ -411,7 +411,7 @@ multi-word names (e.g. `agency.city.federal_way`).
 When `polling_enabled = true` and `polling_channels` is non-empty, the base
 class starts a background loop on service start:
 
-1. Every `polling_interval` ms it calls your `fetch_new_incidents`.
+1. Every `polling_interval` seconds it calls your `fetch_new_incidents`.
 2. It filters out incident ids already posted (in memory + persisted).
 3. It prefixes each new incident with `[LABEL]:` and posts it to every channel
    in `polling_channels`, respecting `flood_scope` if set.
