@@ -101,9 +101,9 @@ class BaseAlertService(BaseServicePlugin):
         self.polling_enabled = self.bot.config.getboolean(
             section, "polling_enabled", fallback=False
         )
-        poll_ms = self.bot.config.getint(section, "polling_interval", fallback=300000)
+        poll_seconds = self.bot.config.getint(section, "polling_interval", fallback=120)
         # Guard against a pathologically small interval hammering the upstream API.
-        self.polling_interval_seconds = max(30.0, poll_ms / 1000.0)
+        self.polling_interval_seconds = max(30.0, poll_seconds)
         channels_raw = (
             self.bot.config.get(section, "polling_channels", fallback="") or ""
         )

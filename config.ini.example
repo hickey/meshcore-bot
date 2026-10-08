@@ -1455,8 +1455,8 @@ max_incident_age_hours = 24.0
 # answers there (so an #alerts channel shows just its own source).
 polling_enabled = false
 
-# How often to poll for new incidents, in milliseconds (minimum 30000).
-polling_interval = 300000
+# How often to poll for new incidents, in seconds (minimum 30).
+polling_interval = 120
 
 # Comma-separated channels to auto-post new incidents to (e.g. #alerts,#fire).
 # Leave empty to disable posting even when polling_enabled is true.
