@@ -404,6 +404,13 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
             elif recent_rf_data and recent_rf_data.get("routing_info"):
                 rf_routing = recent_rf_data["routing_info"]
                 message.routing_info = rf_routing  # Path command uses this for multi-byte path (no re-parse)
+                self.logger.debug(
+                    "Attached DM routing info: packet_hash=%s path_length=%s path_byte_length=%s bytes_per_hop=%s",
+                    rf_routing.get("packet_hash"),
+                    rf_routing.get("path_length"),
+                    rf_routing.get("path_byte_length"),
+                    rf_routing.get("bytes_per_hop"),
+                )
                 if rf_routing.get("path_length", 0) > 0:
                     path_nodes = rf_routing.get("path_nodes", [])
                     route_type = rf_routing.get("route_type", "Unknown")
@@ -880,6 +887,15 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
                 and rf_data_is_correlated(recent_rf_data)
             ):
                 message.routing_info = recent_rf_data["routing_info"]
+                routing = message.routing_info
+                self.logger.debug(
+                    "Attached channel routing info: match=%s packet_hash=%s path_length=%s path_byte_length=%s bytes_per_hop=%s",
+                    recent_rf_data.get("_rf_match"),
+                    routing.get("packet_hash"),
+                    routing.get("path_length"),
+                    routing.get("path_byte_length"),
+                    routing.get("bytes_per_hop"),
+                )
 
             self.logger.debug(f"Message routing info: hops={message.hops}, routing={message.path}")
 
@@ -1088,6 +1104,7 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
         if message.is_dm and message.content.strip().lower() == "advert":
             decision = self.bot.command_manager._one_byte_deny_decision(message, "advert")
             if decision.action == ACTION_DENY:
+                self.logger.debug("Sending one-byte denial response for advert")
                 await self.bot.command_manager.send_response(message, decision.response or "")
             elif decision.action == ACTION_NORMAL:
                 await self.bot.command_manager.handle_advert_command(message)
@@ -1095,6 +1112,11 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
 
         # Check for keywords and custom syntax
         keyword_matches = self.bot.command_manager.check_keywords(message)
+        self.logger.debug(
+            "Keyword processing complete: matches=%s one_byte_deny_claimed=%s",
+            [(keyword, response is not None) for keyword, response in keyword_matches],
+            getattr(message, "_one_byte_deny_claimed", False),
+        )
 
         help_response_sent = False
         plugin_command_with_response_matched = False
@@ -1162,6 +1184,12 @@ class MessageHandler(MeshGraphRecorderMixin, ContactEventsMixin, RfCorrelationMi
         # Help responses and plugin commands with responses should be the final response for that message
         # Plugin commands without responses (response is None) should still be executed
         if not help_response_sent and not plugin_command_with_response_matched:
+            self.logger.debug(
+                "Entering fallback command execution: help_response_sent=%s plugin_match=%s one_byte_deny_claimed=%s",
+                help_response_sent,
+                plugin_command_with_response_matched,
+                getattr(message, "_one_byte_deny_claimed", False),
+            )
             # After keyword handling, try RandomLine
             randomline_match = self.bot.command_manager.match_randomline(message)
             if randomline_match:

@@ -80,8 +80,8 @@ def is_one_byte_path(message: Any) -> bool:
     routing_info = getattr(message, "routing_info", None)
     if not isinstance(routing_info, dict):
         return False
-    path_byte_length = routing_info.get("path_byte_length")
-    return type(path_byte_length) is int and path_byte_length == 1
+    bytes_per_hop = routing_info.get("bytes_per_hop")
+    return type(bytes_per_hop) is int and bytes_per_hop == 1
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -114,6 +114,13 @@ class OneByteDenyTracker:
     def decide(self, message: Any, command_name: str) -> OneByteDenyDecision:
         cached = getattr(message, "_one_byte_deny_decision", None)
         if isinstance(cached, OneByteDenyDecision):
+            self.logger.debug(
+                "1-byte deny decision cached: command=%s action=%s sender=%s packet_hash=%s",
+                command_name,
+                cached.action,
+                self._sender_key(message),
+                self._packet_hash(message),
+            )
             return cached
 
         decision = self._decide_uncached(message, command_name)
@@ -121,15 +128,50 @@ class OneByteDenyTracker:
             setattr(message, "_one_byte_deny_decision", decision)
         except Exception:
             pass
+        self.logger.debug(
+            "1-byte deny decision: command=%s action=%s sender=%s packet_hash=%s routing=%s",
+            command_name,
+            decision.action,
+            self._sender_key(message),
+            self._packet_hash(message),
+            self._routing_summary(message),
+        )
         return decision
+
+    def _routing_summary(self, message: Any) -> dict[str, Any]:
+        routing_info = getattr(message, "routing_info", None)
+        if not isinstance(routing_info, dict):
+            return {}
+        return {
+            "path_length": routing_info.get("path_length"),
+            "path_byte_length": routing_info.get("path_byte_length"),
+            "bytes_per_hop": routing_info.get("bytes_per_hop"),
+        }
+
+    def _packet_hash(self, message: Any) -> Any:
+        routing_info = getattr(message, "routing_info", None)
+        return routing_info.get("packet_hash") if isinstance(routing_info, dict) else None
 
     def _decide_uncached(self, message: Any, command_name: str) -> OneByteDenyDecision:
         settings = self.settings
-        if (
-            not settings.enabled
-            or getattr(message, "capture_sink", None) is not None
-            or not is_one_byte_path(message)
-        ):
+        routing = self._routing_summary(message)
+        self.logger.debug(
+            "Evaluating 1-byte deny: command=%s enabled=%s synthetic=%s sender=%s packet_hash=%s routing=%s",
+            command_name,
+            settings.enabled,
+            getattr(message, "capture_sink", None) is not None,
+            self._sender_key(message),
+            self._packet_hash(message),
+            routing,
+        )
+        if not settings.enabled:
+            self.logger.debug("1-byte deny normal: feature disabled")
+            return OneByteDenyDecision(ACTION_NORMAL)
+        if getattr(message, "capture_sink", None) is not None:
+            self.logger.debug("1-byte deny normal: synthetic capture message")
+            return OneByteDenyDecision(ACTION_NORMAL)
+        if not is_one_byte_path(message):
+            self.logger.debug("1-byte deny normal: bytes_per_hop is not explicit integer 1")
             return OneByteDenyDecision(ACTION_NORMAL)
 
         sender_key = self._sender_key(message)
@@ -146,6 +188,17 @@ class OneByteDenyTracker:
                 and (now - mesh_last).total_seconds() < settings.mesh_cooldown_minutes * 60
             )
             if sender_active or mesh_active:
+                reasons = []
+                if sender_active:
+                    reasons.append("sender cooldown")
+                if mesh_active:
+                    reasons.append("mesh cooldown")
+                self.logger.debug(
+                    "1-byte deny suppress: command=%s sender=%s reasons=%s",
+                    command_name,
+                    sender_key,
+                    ", ".join(reasons),
+                )
                 return OneByteDenyDecision(ACTION_SUPPRESS)
 
             self._record_attempt(message, sender_key, command_name, now)
@@ -153,6 +206,12 @@ class OneByteDenyTracker:
         response = format_keyword_response_with_placeholders(
             settings.hash_template, message, self.bot
         ).strip()
+        self.logger.debug(
+            "1-byte deny response reserved: command=%s sender=%s response_length=%d",
+            command_name,
+            sender_key,
+            len(response),
+        )
         return OneByteDenyDecision(ACTION_DENY, response)
 
     def _sender_key(self, message: Any) -> str:
