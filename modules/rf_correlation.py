@@ -437,6 +437,17 @@ class RfCorrelationMixin:
                     payload.get("SNR"),
                 )
 
+        if recent_rf_data is not None:
+            routing = recent_rf_data.get("routing_info") or {}
+            self.logger.debug(
+                "RF correlation selected: match=%s packet_hash=%s path_length=%s path_byte_length=%s bytes_per_hop=%s",
+                recent_rf_data.get(RF_MATCH_KEY, "unknown"),
+                routing.get("packet_hash") or recent_rf_data.get("packet_hash"),
+                routing.get("path_length"),
+                routing.get("path_byte_length"),
+                routing.get("bytes_per_hop"),
+            )
+
         return recent_rf_data
 
     def _find_rf_row_matching_chan_payload(

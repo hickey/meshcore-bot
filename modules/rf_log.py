@@ -117,6 +117,14 @@ class RfLogMixin:
                             routing_info = self._rf_routing_info(
                                 decoded_packet, is_trace, trace_route_hashes, trace_snr_db, payload_length, packet_hash
                             )
+                            self.logger.debug(
+                                "RF routing decoded: packet_hash=%s path_length=%s path_byte_length=%s bytes_per_hop=%s route_type=%s",
+                                packet_hash,
+                                routing_info.get("path_length"),
+                                routing_info.get("path_byte_length"),
+                                routing_info.get("bytes_per_hop"),
+                                routing_info.get("route_type"),
+                            )
                             # Validate path consistency (path_byte_length, path_hex, path_nodes, bytes_per_hop)
                             if not is_trace:
                                 self._warn_path_inconsistency(routing_info)

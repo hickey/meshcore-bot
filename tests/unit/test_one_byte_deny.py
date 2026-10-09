@@ -58,8 +58,9 @@ def bot(config_parser, db_manager=None):
     )
 
 
-def message(sender="Alice", *, path_byte_length=1, packet_hash="ABCDEF0123456789", **kwargs):
+def message(sender="Alice", *, path_byte_length=1, bytes_per_hop=1, packet_hash="ABCDEF0123456789", **kwargs):
     routing_info = kwargs.pop("routing_info", {"path_byte_length": path_byte_length})
+    routing_info["bytes_per_hop"] = bytes_per_hop
     if packet_hash is not None:
         routing_info["packet_hash"] = packet_hash
     return MeshMessage(
@@ -87,12 +88,13 @@ def make_tracker(tmp_path, **settings):
     return OneByteDenyTracker(bot(parser, db)), db
 
 
-def test_classifier_requires_explicit_integer_path_length():
-    assert is_one_byte_path(message())
-    assert not is_one_byte_path(message(path_byte_length=2))
-    assert not is_one_byte_path(message(routing_info={"path_length": 1}))
-    assert not is_one_byte_path(message(routing_info={"path_byte_length": "1"}))
-    assert not is_one_byte_path(message(routing_info={"path_byte_length": True}))
+def test_classifier_requires_explicit_integer_path_width():
+    assert is_one_byte_path(message(path_byte_length=3, bytes_per_hop=1))
+    assert not is_one_byte_path(message(path_byte_length=1, bytes_per_hop=2))
+    assert not is_one_byte_path(message(path_byte_length=3, bytes_per_hop=None))
+    assert not is_one_byte_path(message(path_byte_length=3, bytes_per_hop="1"))
+    assert not is_one_byte_path(message(path_byte_length=3, bytes_per_hop=True))
+    assert not is_one_byte_path(message(path_byte_length=3, routing_info={"path_byte_length": 3}))
 
 
 def test_disabled_and_synthetic_messages_are_normal(tmp_path):
@@ -102,6 +104,12 @@ def test_disabled_and_synthetic_messages_are_normal(tmp_path):
     tracker, _ = make_tracker(tmp_path)
     synthetic = message(capture_sink=[])
     assert tracker.decide(synthetic, "ping").action == ACTION_NORMAL
+
+
+def test_multi_hop_one_byte_path_is_denied(tmp_path):
+    tracker, _ = make_tracker(tmp_path)
+    decision = tracker.decide(message(path_byte_length=3, bytes_per_hop=1), "ping")
+    assert decision.action == ACTION_DENY
 
 
 def test_template_uses_packet_hash_and_existing_placeholders(tmp_path):

@@ -208,6 +208,14 @@ class CommandManager:
 
     def _one_byte_deny_decision(self, message: MeshMessage, command_name: str):
         decision = self.one_byte_deny.decide(message, command_name)
+        self.logger.debug(
+            "Command one-byte gate: command=%s action=%s claimed=%s sender=%s packet_hash=%s",
+            command_name,
+            decision.action,
+            decision.action != ACTION_NORMAL,
+            message.sender_id,
+            (message.routing_info or {}).get("packet_hash") if isinstance(message.routing_info, dict) else None,
+        )
         if decision.action != ACTION_NORMAL:
             setattr(message, "_one_byte_deny_claimed", True)
         return decision
