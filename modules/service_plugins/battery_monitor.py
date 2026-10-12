@@ -113,8 +113,35 @@ class BatteryMonitorService(BaseServicePlugin):
                     if contact is None:
                         self.logger.warning("Battery monitor node is not in contacts: %s", public_key)
                         continue
-                    await commands.reset_path(contact)
+                    self.logger.debug(
+                        "Battery monitor reset_path target=%s route=%s",
+                        public_key,
+                        self._route_details(contact),
+                    )
+                    reset_result = await commands.reset_path(contact)
+                    reset_type, reset_payload = self._result_details(reset_result)
+                    self.logger.debug(
+                        "Battery monitor reset_path result target=%s type=%s payload=%s route=%s",
+                        public_key,
+                        reset_type,
+                        reset_payload,
+                        self._route_details(contact, reset_result),
+                    )
+                    self.logger.debug(
+                        "Battery monitor req_status_sync sending target=%s timeout=%.1fs route=%s",
+                        public_key,
+                        30.0,
+                        self._route_details(contact),
+                    )
                     status = await request(contact, timeout=30.0)
+                    status_type, status_payload = self._result_details(status)
+                    self.logger.debug(
+                        "Battery monitor req_status_sync result target=%s type=%s payload=%s route=%s",
+                        public_key,
+                        status_type,
+                        status_payload,
+                        self._route_details(contact, status),
+                    )
                     voltage = self._voltage_from_status(status)
                     counters = self._message_counters_from_status(status)
                     percentage = None
@@ -138,6 +165,67 @@ class BatteryMonitorService(BaseServicePlugin):
                 return contact
         lookup = getattr(meshcore, "get_contact_by_key_prefix", None)
         return lookup(public_key) if callable(lookup) else None
+
+    @staticmethod
+    def _field(value: Any, name: str) -> Any:
+        if isinstance(value, dict):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    @classmethod
+    def _route_details(cls, contact: Any, result: Any = None) -> str:
+        """Return route metadata without guessing when the library omits it."""
+        candidates = [result, cls._field(result, "payload"), contact]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            routing_info = cls._field(candidate, "routing_info")
+            if routing_info is not None:
+                candidates.insert(0, routing_info)
+            route_type = cls._field(candidate, "route_type")
+            if route_type is None:
+                route_type = cls._field(candidate, "route_type_name")
+            if route_type is not None:
+                name = str(getattr(route_type, "name", route_type)).upper()
+                if name.lstrip("-").isdigit():
+                    name = {"0": "FLOOD", "1": "FLOOD", "2": "DIRECT", "3": "DIRECT"}.get(name, name)
+                if "FLOOD" in name:
+                    return f"flood (route_type={name})"
+                if "DIRECT" in name:
+                    return f"direct (route_type={name})"
+                return f"unknown (route_type={name})"
+
+        path_length = None
+        for candidate in candidates:
+            for key in ("path_length", "path_len", "out_path_len"):
+                value = cls._field(candidate, key)
+                if value is not None:
+                    path_length = value
+                    break
+            if path_length is not None:
+                break
+        try:
+            path_length = int(path_length)
+        except (TypeError, ValueError):
+            path_length = None
+        if path_length == -1:
+            return "flood (out_path_len=-1)"
+        if path_length is not None and path_length >= 0:
+            return f"direct (path_length={path_length})"
+        return "unknown (route metadata unavailable)"
+
+    @classmethod
+    def _result_details(cls, result: Any) -> tuple[str, str]:
+        """Format a command result for DEBUG logs without depending on MeshCore types."""
+        event_type = cls._field(result, "type")
+        event_name = getattr(event_type, "name", event_type) if event_type is not None else type(result).__name__
+        payload = cls._field(result, "payload") if not isinstance(result, dict) else result
+        if payload is None:
+            payload = result
+        rendered = repr(payload)
+        if len(rendered) > 1000:
+            rendered = rendered[:997] + "..."
+        return str(event_name), rendered
 
     @staticmethod
     def _message_counters_from_status(status: Any) -> tuple[Optional[int], Optional[int]]:

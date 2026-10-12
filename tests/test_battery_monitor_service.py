@@ -27,7 +27,7 @@ assert base_spec.loader is not None
 base_spec.loader.exec_module(base_module)
 service_spec = importlib.util.spec_from_file_location(
     "local_services.battery_monitor",
-    Path(__file__).parents[1] / "local" / "service_plugins" / "battery_monitor.py",
+    Path(__file__).parents[1] / "modules" / "service_plugins" / "battery_monitor.py",
 )
 service_module = importlib.util.module_from_spec(service_spec)
 sys.modules["local_services.battery_monitor"] = service_module
@@ -94,9 +94,53 @@ def test_checks_remote_node_and_stores_nullable_percentage(config):
     assert params[4:] == (10, 20, None)
 
 
+def test_logs_status_request_and_response(config):
+    key = "aa" * 32
+    contact = {"public_key": key}
+    commands = SimpleNamespace(
+        reset_path=AsyncMock(return_value={"route_type": "FLOOD"}),
+        req_status_sync=AsyncMock(
+            return_value={"route_type": "DIRECT", "bat": 3725, "nb_recv": 10, "nb_sent": 20}
+        ),
+    )
+    bot = make_bot(config)
+    bot.meshcore = SimpleNamespace(commands=commands, contacts={key: contact})
+    service = BatteryMonitorService(bot)
+
+    run(service._check_nodes())
+
+    debug_messages = [call.args[0] % call.args[1:] for call in bot.logger.debug.call_args_list]
+    assert any("req_status_sync sending" in message and key in message for message in debug_messages)
+    assert any("req_status_sync result" in message and "DIRECT" in message for message in debug_messages)
+    assert any("route=flood" in message for message in debug_messages)
+    assert any("route=direct" in message for message in debug_messages)
+
+
+def test_logs_event_payload_and_unknown_route(config):
+    key = "aa" * 32
+    payload = {"bat": 3850, "nb_recv": 4, "nb_sent": 7}
+    commands = SimpleNamespace(
+        reset_path=AsyncMock(return_value=None),
+        req_status_sync=AsyncMock(return_value=SimpleNamespace(type="STATUS", payload=payload)),
+    )
+    bot = make_bot(config)
+    bot.meshcore = SimpleNamespace(commands=commands, contacts={key: {"public_key": key}})
+    service = BatteryMonitorService(bot)
+
+    run(service._check_nodes())
+
+    debug_messages = [call.args[0] % call.args[1:] for call in bot.logger.debug.call_args_list]
+    assert any("req_status_sync result" in message and "3850" in message for message in debug_messages)
+    assert any("route=unknown" in message for message in debug_messages)
+    params = bot.db_manager.store_battery_observation.call_args.args
+    assert params[3] == pytest.approx(3.85)
+    assert params[4:6] == (4, 7)
+
+
 def test_extracts_explicit_percentage(config):
     key = "aa" * 32
     commands = SimpleNamespace(
+        reset_path=AsyncMock(),
         req_status_sync=AsyncMock(return_value={"bat": 4000}),
         req_telemetry_sync=AsyncMock(
             return_value=[{"type": "percentage", "value": 81}]
@@ -109,8 +153,9 @@ def test_extracts_explicit_percentage(config):
     run(service._check_nodes())
 
     params = bot.db_manager.store_battery_observation.call_args.args
-    assert params[2] == pytest.approx(81)
+    assert params[2] is None
     assert params[3] == pytest.approx(4.0)
+    commands.req_telemetry_sync.assert_not_awaited()
 
 
 def test_one_node_failure_does_not_abort_following_nodes(config):
